@@ -1,36 +1,57 @@
-/**
- * gitReader.test.js
- *
- * Basic sanity checks for readCommits / readAllCommits.
- * Uses a real git repo (the chronicl repo itself) so no mocking needed.
- */
-
-import { readCommits, readAllCommits } from '../src/core/gitReader.js';
+import test from 'node:test';
+import assert from 'node:assert';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { groupByDate, extractKeywords, findRepos } from '../src/core/gitReader.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, '..'); // the chronicl repo itself
 
-test('readCommits returns an array', async () => {
-  // Will return [] if no commits exist yet — that's fine
-  const commits = await readCommits(REPO_ROOT);
-  expect(Array.isArray(commits)).toBe(true);
+test('groupByDate correctly groups and sorts commits', () => {
+  const commits = [
+    { date: new Date('2025-01-14T12:00:00Z'), hash: 'a' },
+    { date: new Date('2025-01-15T12:00:00Z'), hash: 'b' },
+    { date: new Date('2025-01-14T15:00:00Z'), hash: 'c' },
+  ];
+
+  const grouped = groupByDate(commits);
+
+  const keys = Object.keys(grouped);
+  assert.deepStrictEqual(keys, ['2025-01-15', '2025-01-14']);
+  assert.strictEqual(grouped['2025-01-15'].length, 1);
+  assert.strictEqual(grouped['2025-01-14'].length, 2);
 });
 
-test('each commit has expected fields', async () => {
-  const commits = await readCommits(REPO_ROOT);
-  for (const c of commits) {
-    expect(c).toHaveProperty('hash');
-    expect(c).toHaveProperty('message');
-    expect(c).toHaveProperty('author');
-    expect(c).toHaveProperty('date');
-    expect(c).toHaveProperty('repo');
-    expect(c.date).toBeInstanceOf(Date);
-  }
+test('extractKeywords filters stop words and ranks by frequency', () => {
+  const messages = [
+    "fix auth bug",
+    "add login feature",
+    "fix typo in login"
+  ];
+
+  const keywords = extractKeywords(messages);
+
+  assert.ok(keywords.includes('login'));
+  assert.ok(keywords.includes('auth'));
+  assert.ok(keywords.includes('bug'));
+  assert.ok(keywords.includes('feature'));
+  assert.ok(keywords.includes('typo'));
+  
+  // "fix" and "add" are in the stop list and should be filtered out
+  assert.ok(!keywords.includes('fix'));
+  assert.ok(!keywords.includes('add'));
+  
+  // "in" should be filtered out for being < 3 chars
+  assert.ok(!keywords.includes('in'));
+  
+  // 'login' appears twice, should be the top keyword
+  assert.strictEqual(keywords[0], 'login');
 });
 
-test('readAllCommits handles multiple paths gracefully', async () => {
-  const commits = await readAllCommits([REPO_ROOT, '/nonexistent/path']);
-  expect(Array.isArray(commits)).toBe(true);
+test('findRepos finds the current project repo', async () => {
+  // Go up one extra level since the .git folder is at Terminal_project root
+  const projectRoot = path.resolve(__dirname, '../..');
+  const repos = await findRepos(projectRoot);
+
+  assert.ok(repos.length > 0, 'Should find at least one repo');
+  assert.ok(repos.some(r => r.endsWith('Terminal_project')), 'Should find Terminal_project repo');
 });
