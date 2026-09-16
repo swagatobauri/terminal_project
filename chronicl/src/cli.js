@@ -33,6 +33,7 @@ program
   .command('log')
   .description('Show your journal for today (or pass --week for this week)')
   .option('-w, --week', 'Show the full week instead of just today')
+  .option('-d, --date <date>', 'Show a specific date')
   .action(runLog);
 
 program

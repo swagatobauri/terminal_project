@@ -1,48 +1,78 @@
-/**
- * historyReader.js — reads the user's shell history file
- *
- * Supports zsh, bash, and fish. Returns lines as plain strings
- * (with timestamps stripped for zsh extended history format).
- */
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
 
-import { readFile } from 'fs/promises';
-import { homedir } from 'os';
-import { existsSync } from 'fs';
+const NOISE_COMMANDS = new Set(['ls', 'cd', 'clear', 'pwd', 'cat', 'echo', 'man', 'history']);
 
-const HISTORY_FILES = {
-  zsh:  `${homedir()}/.zsh_history`,
-  bash: `${homedir()}/.bash_history`,
-  fish: `${homedir()}/.local/share/fish/fish_history`,
-};
+function isNoise(cmd) {
+  const base = cmd.trim().split(/\s+/)[0];
+  return NOISE_COMMANDS.has(base);
+}
 
-/**
- * Read and parse the history file for the given shell.
- * @param {string} shell  One of: zsh | bash | fish
- * @param {number} [limit=500]  Max number of lines to return (most recent)
- * @returns {Promise<string[]>} Command lines
- */
-export async function readHistory(shell = 'zsh', limit = 500) {
-  const filePath = HISTORY_FILES[shell] ?? HISTORY_FILES.zsh;
+export async function getShellHistory(shellType, options = {}) {
+  const home = os.homedir();
+  let historyPath = '';
+  
+  if (shellType === 'zsh') historyPath = path.join(home, '.zsh_history');
+  else if (shellType === 'bash') historyPath = path.join(home, '.bash_history');
+  else if (shellType === 'fish') historyPath = path.join(home, '.local/share/fish/fish_history');
+  else historyPath = path.join(home, '.zsh_history');
 
-  if (!existsSync(filePath)) return [];
-
-  const raw = await readFile(filePath, 'utf8');
-  const lines = raw.split('\n').filter(Boolean);
-
-  const commands = lines
-    .map((line) => {
-      // zsh extended history format: ": <timestamp>:<elapsed>;<command>"
-      if (shell === 'zsh' && line.startsWith(': ')) {
-        return line.replace(/^: \d+:\d+;/, '').trim();
+  try {
+    const content = await fs.readFile(historyPath, 'utf-8');
+    const lines = content.split('\n');
+    const results = [];
+    
+    if (shellType === 'zsh') {
+      for (const line of lines) {
+        if (!line) continue;
+        const match = line.match(/^:\s*(\d+):\d+;(.*)$/);
+        if (match) {
+          const timestamp = parseInt(match[1], 10) * 1000;
+          const command = match[2];
+          if (!isNoise(command)) {
+            results.push({ command, date: new Date(timestamp), shell: 'zsh' });
+          }
+        }
       }
-      // fish history is YAML-ish — grab the "cmd:" lines
-      if (shell === 'fish' && line.startsWith('- cmd:')) {
-        return line.replace('- cmd:', '').trim();
+    } else if (shellType === 'fish') {
+      let currentCmd = null;
+      for (const line of lines) {
+        const cmdMatch = line.match(/^- cmd:\s*(.*)$/);
+        const whenMatch = line.match(/^\s*when:\s*(\d+)$/);
+        
+        if (cmdMatch) {
+          currentCmd = cmdMatch[1];
+        } else if (whenMatch && currentCmd) {
+          if (!isNoise(currentCmd)) {
+            const timestamp = parseInt(whenMatch[1], 10) * 1000;
+            results.push({ command: currentCmd, date: new Date(timestamp), shell: 'fish' });
+          }
+          currentCmd = null;
+        }
       }
-      return line.trim();
-    })
-    .filter(Boolean);
+    } else {
+      // bash or unknown - no guaranteed timestamps
+      for (const line of lines) {
+        if (!line) continue;
+        if (!isNoise(line)) {
+          results.push({ command: line.trim(), date: null, shell: shellType || 'bash' });
+        }
+      }
+      return results.slice(-200);
+    }
+    
+    return results;
+  } catch (err) {
+    // Return empty array silently if history file isn't found or unreadable
+    return [];
+  }
+}
 
-  // Return the most recent N commands
-  return commands.slice(-limit);
+export function getCommandsForDate(history, targetDate) {
+  const targetStr = targetDate.toISOString().split('T')[0];
+  return history.filter(item => {
+    if (!item.date) return false;
+    return item.date.toISOString().split('T')[0] === targetStr;
+  });
 }
