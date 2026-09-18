@@ -1,18 +1,30 @@
 {
   "name": "chronicl",
   "version": "0.1.0",
-  "description": "Your terminal dev journal. Auto-tracks what you built.",
+  "description": "Your terminal dev journal. Auto-tracks what you built across every repo.",
   "type": "module",
   "bin": {
     "chronicl": "./bin/chronicl.js"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "keywords": [
+    "developer", "journal", "git", "terminal", "cli",
+    "productivity", "commits", "history", "devlog"
+  ],
+  "author": "swagatobauri",
+  "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
-  "scripts": {
-    "start": "node bin/chronicl.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/swagatobauri/terminal_project.git"
   },
+  "homepage": "https://github.com/swagatobauri/terminal_project#readme",
   "dependencies": {
     "chalk": "^5.3.0",
     "cli-table3": "^0.6.3",
@@ -26,8 +38,5 @@
   },
   "devDependencies": {
     "jest": "^29.7.0"
-  },
-  "keywords": ["cli", "journal", "git", "developer", "terminal"],
-  "author": "",
-  "license": "MIT"
+  }
 }

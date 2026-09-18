@@ -1,65 +1,66 @@
-/**
- * parser.test.js
- */
+import test from 'node:test';
+import assert from 'node:assert';
+import { parseNaturalDate, getLongestStreak, getTopRepos } from '../src/core/parser.js';
+import { startOfDay, endOfDay, subDays, startOfWeek, endOfWeek } from 'date-fns';
 
-import {
-  extractKeywords,
-  groupByDay,
-  groupByWeek,
-  filterByDay,
-} from '../src/core/parser.js';
-
-// --- extractKeywords ---
-
-test('extractKeywords strips stop words', () => {
-  const kw = extractKeywords('fix the login form and update styles');
-  expect(kw).not.toContain('fix');
-  expect(kw).not.toContain('the');
-  expect(kw).not.toContain('and');
-  expect(kw).not.toContain('update');
+test('parseNaturalDate handles yesterday', () => {
+  const range = parseNaturalDate("yesterday");
+  const yesterday = subDays(new Date(), 1);
+  
+  assert.ok(range, 'range should not be null');
+  assert.strictEqual(range.from.toISOString(), startOfDay(yesterday).toISOString());
+  assert.strictEqual(range.to.toISOString(), endOfDay(yesterday).toISOString());
 });
 
-test('extractKeywords keeps meaningful words', () => {
-  const kw = extractKeywords('refactor authentication middleware');
-  expect(kw).toContain('refactor');
-  expect(kw).toContain('authentication');
-  expect(kw).toContain('middleware');
+test('parseNaturalDate handles last week', () => {
+  const range = parseNaturalDate("last week");
+  const lastWeek = subDays(new Date(), 7);
+  
+  assert.ok(range, 'range should not be null');
+  assert.strictEqual(range.from.toISOString(), startOfWeek(lastWeek, { weekStartsOn: 1 }).toISOString());
+  assert.strictEqual(range.to.toISOString(), endOfWeek(lastWeek, { weekStartsOn: 1 }).toISOString());
 });
 
-test('extractKeywords handles empty string', () => {
-  expect(extractKeywords('')).toEqual([]);
+test('parseNaturalDate handles 2 days ago', () => {
+  const range = parseNaturalDate("2 days ago");
+  const expected = subDays(new Date(), 2);
+  
+  assert.ok(range, 'range should not be null');
+  assert.strictEqual(range.from.toISOString(), startOfDay(expected).toISOString());
+  assert.strictEqual(range.to.toISOString(), endOfDay(expected).toISOString());
 });
 
-// --- groupByDay ---
-
-const makeCommit = (dateStr, msg = 'test') => ({
-  date: new Date(dateStr),
-  message: msg,
-  repo: '/tmp/repo',
-  hash: 'abc1234',
-  author: 'dev',
+test('parseNaturalDate returns null for nonsense', () => {
+  const range = parseNaturalDate("nonsense gibberish");
+  assert.strictEqual(range, null);
 });
 
-test('groupByDay groups correctly', () => {
-  const commits = [
-    makeCommit('2024-03-01T10:00:00'),
-    makeCommit('2024-03-01T15:00:00'),
-    makeCommit('2024-03-02T09:00:00'),
+test('getLongestStreak counts consecutive days', () => {
+  const logs = [
+    { date: new Date('2025-01-14T10:00:00Z').toISOString() },
+    { date: new Date('2025-01-13T10:00:00Z').toISOString() },
+    { date: new Date('2025-01-12T10:00:00Z').toISOString() },
+    // gap
+    { date: new Date('2025-01-09T10:00:00Z').toISOString() },
+    { date: new Date('2025-01-08T10:00:00Z').toISOString() },
   ];
-  const groups = groupByDay(commits);
-  expect(groups.size).toBe(2);
-  expect(groups.get('2024-03-01')).toHaveLength(2);
-  expect(groups.get('2024-03-02')).toHaveLength(1);
+  
+  const streak = getLongestStreak(logs);
+  assert.strictEqual(streak.days, 3);
+  assert.strictEqual(streak.to.toISOString(), new Date('2025-01-14T12:00:00Z').toISOString());
+  assert.strictEqual(streak.from.toISOString(), new Date('2025-01-12T12:00:00Z').toISOString());
 });
 
-// --- filterByDay ---
-
-test('filterByDay returns only matching commits', () => {
+test('getTopRepos sorts and limits correctly', () => {
   const commits = [
-    makeCommit('2024-03-01T10:00:00'),
-    makeCommit('2024-03-02T10:00:00'),
+    { repo: 'a' }, { repo: 'b' }, { repo: 'a' }, { repo: 'c' },
+    { repo: 'a' }, { repo: 'b' }, { repo: 'd' }
   ];
-  const result = filterByDay(commits, new Date('2024-03-01'));
-  expect(result).toHaveLength(1);
-  expect(result[0].date.toISOString()).toContain('2024-03-01');
+  
+  const top = getTopRepos(commits, 2);
+  assert.strictEqual(top.length, 2);
+  assert.strictEqual(top[0].repo, 'a');
+  assert.strictEqual(top[0].count, 3);
+  assert.strictEqual(top[1].repo, 'b');
+  assert.strictEqual(top[1].count, 2);
 });
